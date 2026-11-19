@@ -35,12 +35,20 @@ def recv_frame(sock, limit=2*1024*1024):
         raise ValueError("报文超过长度上限")
     return exact(sock, size)
 
-class TCPServer(socketserver.ThreadingTCPServer):
-    allow_reuse_address = True
+class ExclusiveBind:
+    # Windows SO_REUSEADDR permits unrelated listeners to share a port.
+    # Exclusive binding prevents experiments from receiving another process's data.
+    allow_reuse_address = not hasattr(socket, "SO_EXCLUSIVEADDRUSE")
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+class TCPServer(ExclusiveBind, socketserver.ThreadingTCPServer):
     daemon_threads = True
 
-class UDPServer(socketserver.ThreadingUDPServer):
-    allow_reuse_address = True
+class UDPServer(ExclusiveBind, socketserver.ThreadingUDPServer):
     daemon_threads = True
 
 class TCPHandler(socketserver.BaseRequestHandler):

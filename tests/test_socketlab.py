@@ -18,6 +18,15 @@ class SocketTests(unittest.TestCase):
                     self.assertEqual(result["evidence"]["direct_tcp"]["bytes"],len(PAYLOAD))
                 if mode == "udp_loss": self.assertEqual(result["evidence"]["udp"]["loss_percent"],50)
         self.assertEqual(self.lab.run()["findings"],["HEALTHY"])
+    def test_duplicate_udp_listener_rejected(self):
+        from socketlab.core import UDPServer, UDPHandler
+        first=UDPServer(("127.0.0.1",0),UDPHandler)
+        try:
+            with self.assertRaises(OSError):
+                second=UDPServer(first.server_address,UDPHandler)
+                second.server_close()
+        finally: first.server_close()
+
     def test_fragmented_frame(self):
         a,b=socket.socketpair()
         with a,b:
