@@ -1,9 +1,6 @@
 __pycache__/
 *.pyc
-.state/
-results/*
-!results/.gitkeep
 .venv/
-
-work-*.log
+results/
+*.log
 evidence/captures/windows-scenarios.pcapng

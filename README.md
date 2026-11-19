@@ -1,54 +1,50 @@
-# NetFault Lab 无虚拟机版
+# 基于 Python Socket 的网络服务与故障诊断平台设计与实现
 
-课程选题：基于 Packet Tracer 与 Wireshark 的跨层网络故障诊断综合实验平台设计与实现。
+一个使用 Python 标准库编写的网络编程课程设计。浏览器控制真实 Socket 实验，完成 TCP 文件传输、UDP 应答、DNS 查询、并发连接和六种故障诊断。无需虚拟机，无第三方 Python 依赖。
 
-## 两个独立、互相对照的实验环境
+## 快速运行
 
-- Packet Tracer 8.2.1：PC—交换机—R1—R2—交换机—服务器，覆盖 DHCP、ARP、静态路由、DNS、TCP/HTTP 和 ACL。
-- Windows Python + Wireshark：真实回环 DNS/HTTP 通信，覆盖正常、DNS 错误、服务未监听、组合故障与恢复。
+安装 Python 3.10 或更新版本（安装时勾选 Add Python to PATH），下载仓库 ZIP 并解压。在包含 README.md 的文件夹地址栏输入 `cmd`，回车后执行：
 
-Wireshark 不直接捕获 Packet Tracer 的模拟报文。Packet Tracer 使用 Simulation 取证，Windows 使用 Npcap 回环适配器取证。两边协议现象可对照，不声称网络互通。
-
-## 立即运行
-
-在项目根目录 PowerShell 执行：
-
-```powershell
-python -m netfault.windows_lab
+```sh
+python -m socketlab
 ```
 
-输入 baseline、dns、port、combined、probe、quit。场景命令自动运行探测，JSON 保存到 results/windows/；baseline 同时恢复 DNS 与 HTTP。组合故障应先改为 port（只修好 DNS），再 baseline，观察两阶段恢复。
+浏览器会打开 http://127.0.0.1:8080 。选择场景，点击“启动真实实验”。也可双击 `启动平台.bat`。关闭时在命令窗口按 Ctrl+C。
 
-非交互验证：`python -m netfault.windows_lab --batch`。
-单元测试：`python -m unittest discover -s tests -v`。
-
-HTTP 只绑定 127.0.0.1:8080，DNS 只绑定 127.0.0.1:53535，不改 Windows 防火墙、路由或系统 DNS。若端口占用，可加 --http-port 18080 --dns-port 53536，并同步调整抓包过滤器。真实 DNS 数据包使用教学端口，需要在 Wireshark Decode As 中指定 DNS。
-
-## 操作入口
-
-1. [Packet Tracer 搭建](packet-tracer/BUILD.md)：设备、连线、IP、DHCP、DNS/HTTP 与基线验收。
-2. [六类故障](packet-tracer/FAULTS.md)：注入、证据与恢复，设备配置位于同目录。
-3. [Wireshark 抓包](docs/wireshark.md)：安装与回环抓包步骤。
-4. [报告框架](docs/report.md)、[答辩脚本](docs/demo.md)、[验收清单](docs/experiments.md)。
-
-## GitHub 与展示
-
-创建空仓库后在项目根目录执行：
-
-```powershell
-git init
-git add .
-git commit -m "Add Packet Tracer and Wireshark diagnosis lab"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/netfault-lab.git
-git push -u origin main
+```sh
+python -m socketlab --batch
+python -m unittest discover -s tests -v
 ```
 
-Settings → Pages → Source 选择 GitHub Actions。Pages 工作流发布 docs/ 静态网站；Tests 运行 Windows/Linux 回环测试。Packet Tracer 必须通过软件实测，不能由回环 CI 代替。
+第一条运行全部场景并输出 results/batch.json；第二条运行自动化测试。端口占用时关闭其他本项目进程。网页端口可用 `--port 8088` 修改。
 
-结果目录默认不提交。选取不含无关流量的实验 JSON、PCAPNG、截图放入 evidence/ 后提交，并核对无敏感信息。真实流量抓取仅限 Npcap 回环适配器和本实验端口。
+## 编程实现
 
-## 当前状态
+- `socketlab/core.py`：原始 TCP/UDP Socket、标准 DNS A 报文、并发服务端、故障注入、客户端和基于观测的诊断。
+- `socketlab/__main__.py`：本地 HTTP 控制接口、参数检查、实验串行保护及 JSON 持久化。
+- `docs/`：前端控制台，支持真实调用、导入导出及开发时实测记录。
+- `tests/`：全部场景、恢复、10 客户端并发、分段接收、提前断开、超长报文测试。
 
-已完成 Windows 故障程序、设备配置、搭建/实验指导和网站。Wireshark/Npcap 已安装并采集真实回环抓包；Packet Tracer 实验由使用者线下完成，尚未提供已验收 .pkt。具体状态见 VERIFICATION.md。原 Linux 命名空间代码仅作可选旧版保留，本版无需执行 netfault.lab。
+TCP 应用协议使用 4 字节网络字节序长度头加消息体。客户端先发送 JSON 下载请求，服务端依次发送 JSON 元数据和 1 MiB 二进制数据；客户端循环 recv，处理 TCP 无消息边界问题，验证字节数及 SHA-256。UDP 请求携带序号和会话标识，客户端设置超时并统计应答。DNS 使用真实标准 A 查询，非 JSON 模拟解析。
 
+## 六种故障
+
+|场景|注入方式|观测诊断|
+|---|---|---|
+|F1 TCP 停服|关闭 TCP 监听|TCP_UNAVAILABLE|
+|F2 响应延迟|应用等待 350 ms|RESPONSE_DELAY|
+|F3 UDP 丢包|服务端丢弃奇数序号|UDP_LOSS|
+|F4 错误 DNS|返回 127.0.0.2|DNS_MISMATCH|
+|F5 内容损坏|修改首字节|FILE_CORRUPTED|
+|F6 复合故障|DNS 错误 + TCP 停服|同时报告两种问题|
+
+每轮实验独立重建服务；运行正常场景可验证恢复。诊断根据证据生成，不读取注入场景标签。TCP 失败只能证明端点不可达，不能仅靠它断言路由或防火墙故障。350 ms 是应用响应延迟；UDP 丢弃是应用模拟；SHA-256 演示应用完整性检查，不等同于 TCP 校验和。
+
+## 展示与部署
+
+GitHub Pages 发布 docs 静态页面，可查看实测样本、导入 JSON。浏览器网页不能直接使用 Python Socket；真实实验必须在本机启动后端。不要把静态站点展示误写为云端运行 Python。Packet Tracer 不再是本项目的必要组件。
+
+[小白操作手册](docs/guide.md) · [设计及报告提纲](docs/design.md)
+
+旧版项目内容已替换；旧提交仍在 Git 历史里，以便恢复。本版本实测记录由当前代码生成，未沿用旧版抓包。
